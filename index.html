@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Planner App (Stable & Sorted)</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--text:#111;--accent:#4f46e5}
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:var(--bg);color:var(--text)}
+.app{max-width:420px;margin:auto;padding:12px}
+.card{background:var(--card);padding:14px;border-radius:16px;margin-bottom:14px;box-shadow:0 6px 20px rgba(0,0,0,.15)}
+h1{text-align:center}
+button,input{padding:10px;border-radius:10px;border:1px solid #ccc}
+button{background:var(--accent);color:#fff;border:none}
+.top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.hidden{display:none}
+.topic{padding:14px;background:#e5e7eb;border-radius:12px;margin:10px 0;font-weight:bold;cursor:pointer}
+.plan{display:flex;align-items:center;gap:10px;padding:10px;background:#f9fafb;border-radius:10px;margin:8px 0}
+.date{font-weight:bold;min-width:78px}
+.time{font-weight:bold;color:var(--accent);min-width:60px}
+.text{flex:1}
+.actions button{background:none;color:#333;font-size:18px;padding:4px}
+.form-row{display:flex;gap:8px;margin-bottom:8px}
+.form-row input{flex:1}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>My Planner</h1>
+
+<!-- HOME -->
+<div id="home" class="card">
+<button onclick="openDaily()">⏰ Daily Planning</button><br><br>
+<button onclick="openTopics()">📂 Topic Planning</button>
+</div>
+
+<!-- DAILY -->
+<div id="daily" class="card hidden">
+<div class="top-bar"><h3>Daily Planning</h3><button onclick="goHome()">⬅</button></div>
+<div class="form-row">
+<input type="date" id="dDate" />
+<input type="time" id="dTime" />
+</div>
+<input id="dText" placeholder="Plan details" />
+<button onclick="addDaily()">Add Plan</button>
+<div id="dailyList"></div>
+</div>
+
+<!-- TOPICS -->
+<div id="topics" class="card hidden">
+<div class="top-bar"><h3>Topics</h3><button onclick="addTopic()">➕</button></div>
+<div id="topicList"></div>
+<button onclick="goHome()">⬅ Back</button>
+</div>
+
+<!-- TOPIC PLANS -->
+<div id="topicPlans" class="card hidden"></div>
+</div>
+
+<audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.mp3"></audio>
+
+<script>
+let plans = JSON.parse(localStorage.getItem('plans')) || [];
+const alarm = document.getElementById('alarm');
+let currentTopic = null;
+
+function save(){ localStorage.setItem('plans', JSON.stringify(plans)); }
+function hideAll(){ ['home','daily','topics','topicPlans'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
+function goHome(){ hideAll(); home.classList.remove('hidden'); }
+function openDaily(){ hideAll(); daily.classList.remove('hidden'); renderDaily(); }
+function openTopics(){ hideAll(); topics.classList.remove('hidden'); renderTopics(); }
+
+// -------- DAILY --------
+function addDaily(){
+ if(!dDate.value || !dTime.value || !dText.value) return alert('Fill all fields');
+ plans.push({type:'daily',date:dDate.value,time:dTime.value,text:dText.value,triggered:false});
+ save(); renderDaily(); dText.value='';
+}
+function renderDaily(){
+ dailyList.innerHTML='';
+ plans.filter(p=>p.type==='daily')
+  .sort((a,b)=>a.time.localeCompare(b.time))
+  .forEach(p=>{
+   const index=plans.indexOf(p);
+   const div=document.createElement('div'); div.className='plan';
+   div.innerHTML=`
+    <div class='date'>${p.date}</div>
+    <div class='time'>${p.time}</div>
+    <div class='text'>${p.text}</div>
+    <div class='actions'>
+      <button onclick='editPlan(${index})'>✏️</button>
+      <button onclick='deletePlan(${index})'>🗑️</button>
+    </div>`;
+   dailyList.appendChild(div);
+ });
+}
+
+// -------- TOPICS --------
+function addTopic(){
+ const t = prompt('Topic name');
+ if(!t) return;
+ if(!plans.some(p=>p.type==='topic' && p.topic===t && p.placeholder)){
+   plans.push({type:'topic',topic:t,placeholder:true});
+ }
+ save(); renderTopics();
+}
+function getTopics(){ return [...new Set(plans.filter(p=>p.type==='topic').map(p=>p.topic))]; }
+function renderTopics(){
+ topicList.innerHTML='';
+ getTopics().forEach(t=>{
+  const div=document.createElement('div'); div.className='topic'; div.textContent=t;
+  div.onclick=()=>openTopicPlans(t);
+  topicList.appendChild(div);
+ });
+}
+
+function openTopicPlans(topic){
+ currentTopic = topic;
+ hideAll();
+ const box=document.getElementById('topicPlans');
+ box.classList.remove('hidden');
+ box.innerHTML=`
+  <div class='top-bar'>
+    <h3>${topic}</h3>
+    <div>
+      <button onclick='showTopicForm()'>➕</button>
+      <button onclick='openTopics()'>⬅</button>
+    </div>
+  </div>
+  <div id='topicForm' class='hidden'>
+    <div class='form-row'>
+      <input type='date' id='tDate'>
+      <input type='time' id='tTime'>
+    </div>
+    <input id='tText' placeholder='Plan details'>
+    <button onclick='addTopicPlan()'>Add</button>
+  </div>`;
+
+ const today=new Date().toISOString().slice(0,10);
+ document.getElementById('tDate').value=today;
+
+ plans.filter(p=>p.type==='topic' && p.topic===topic && !p.placeholder)
+  .sort((a,b)=>a.time.localeCompare(b.time))
+  .forEach(p=>{
+   const index=plans.indexOf(p);
+   const div=document.createElement('div'); div.className='plan';
+   div.innerHTML=`
+    <div class='date'>${p.date}</div>
+    <div class='time'>${p.time}</div>
+    <div class='text'>${p.text}</div>
+    <div class='actions'>
+      <button onclick='editPlan(${index})'>✏️</button>
+      <button onclick='deletePlan(${index})'>🗑️</button>
+    </div>`;
+   box.appendChild(div);
+ });
+}
+
+function showTopicForm(){ document.getElementById('topicForm').classList.toggle('hidden'); }
+
+function addTopicPlan(){
+ const d=document.getElementById('tDate').value;
+ const t=document.getElementById('tTime').value;
+ const tx=document.getElementById('tText').value;
+ if(!d||!t||!tx) return alert('Fill all fields');
+ plans.push({type:'topic',topic:currentTopic,date:d,time:t,text:tx,triggered:false});
+ save(); openTopicPlans(currentTopic);
+}
+
+// -------- COMMON --------
+function editPlan(i){
+ const newDate = prompt('Date', plans[i].date);
+ const newTime = prompt('Time', plans[i].time);
+ const newText = prompt('Details', plans[i].text);
+ if(newDate && newTime && newText){
+   plans[i].date=newDate;
+   plans[i].time=newTime;
+   plans[i].text=newText;
+   plans[i].triggered=false;
+   save();
+   plans[i].type==='daily' ? renderDaily() : openTopicPlans(currentTopic);
+ }
+}
+function deletePlan(i){
+ if(confirm('Delete?')){
+   const wasTopic = plans[i].type==='topic';
+   plans.splice(i,1);
+   save();
+   wasTopic ? openTopicPlans(currentTopic) : renderDaily();
+ }
+}
+
+// -------- ALARM (DAILY + TOPIC) --------
+setInterval(()=>{
+ const now=new Date().toTimeString().slice(0,5);
+ const today=new Date().toISOString().slice(0,10);
+ plans.forEach(p=>{
+  if(p.date===today && p.time===now && !p.triggered){
+    alarm.play(); alert(p.text);
+    p.triggered=true; save();
+  }
+ });
+},1000);
+
+goHome();
+</script>
+</body>
+</html>
